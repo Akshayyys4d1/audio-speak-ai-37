@@ -1,5 +1,9 @@
 // API service utilities for Replicate and Gemini AI
 
+// CORS Note: For Electron builds, you can disable web security to bypass CORS:
+// In your Electron main process, set: webSecurity: false in BrowserWindow options
+// Or use: --disable-web-security flag when launching Electron
+
 // Web Speech API type declarations
 declare global {
   interface Window {
@@ -38,45 +42,113 @@ export class ReplicateService {
   }
 
   async transcribeAudio(audioBlob: Blob): Promise<TranscriptionResult> {
-    // Note: Direct browser calls to Replicate API are blocked by CORS policy
-    // This implementation shows how it would work with a backend proxy
-    throw new Error('Replicate API requires a backend proxy due to CORS policy. Using Web Speech API fallback instead.');
+    try {
+      console.log('Starting Replicate API transcription...');
+      
+      // Convert blob to base64 data URL for Replicate
+      const audioDataUrl = await this.blobToDataUrl(audioBlob);
+      
+      // Create prediction on Replicate
+      const response = await fetch('https://api.replicate.com/v1/predictions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          version: this.model,
+          input: {
+            audio: audioDataUrl,
+            model: 'large-v3',
+            translate: false,
+            temperature: 0,
+            suppress_tokens: '-1',
+            logprob_threshold: -1.0,
+            no_speech_threshold: 0.6,
+            condition_on_previous_text: true
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Replicate API request failed:', response.status, errorText);
+        throw new Error(`Replicate API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const prediction = await response.json();
+      console.log('Replicate prediction created:', prediction.id);
+
+      // Poll for completion
+      return await this.pollForCompletion(prediction.urls.get);
+      
+    } catch (error) {
+      console.error('Replicate transcription error:', error);
+      throw error;
+    }
+  }
+
+  private async blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   private async pollForCompletion(url: string): Promise<TranscriptionResult> {
     const maxAttempts = 30; // 5 minutes max
     let attempts = 0;
 
+    console.log('Starting to poll for Replicate transcription completion...');
+
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
       
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Token ${this.apiKey}`,
-        },
-      });
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Token ${this.apiKey}`,
+          },
+        });
 
-      if (!response.ok) {
-        throw new Error(`Polling error: ${response.statusText}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Replicate polling error: ${response.status} ${response.statusText}`, errorText);
+          throw new Error(`Polling error: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log(`Replicate polling attempt ${attempts + 1}: status = ${result.status}`);
+
+        if (result.status === 'succeeded') {
+          console.log('Replicate transcription completed successfully');
+          const transcription = result.output?.transcription || result.output || '';
+          const language = result.output?.language;
+          
+          console.log('Transcription result:', { transcription, language });
+          
+          return {
+            transcription,
+            language
+          };
+        }
+
+        if (result.status === 'failed') {
+          console.error('Replicate transcription failed:', result.error);
+          throw new Error(`Transcription failed: ${result.error}`);
+        }
+
+        attempts++;
+      } catch (error) {
+        console.error(`Replicate polling attempt ${attempts + 1} failed:`, error);
+        throw error;
       }
-
-      const result = await response.json();
-
-      if (result.status === 'succeeded') {
-        return {
-          transcription: result.output?.transcription || result.output || '',
-          language: result.output?.language
-        };
-      }
-
-      if (result.status === 'failed') {
-        throw new Error(`Transcription failed: ${result.error}`);
-      }
-
-      attempts++;
     }
 
-    throw new Error('Transcription timeout');
+    console.error('Replicate transcription timed out after maximum attempts');
+    throw new Error('Transcription timeout - exceeded maximum polling attempts');
   }
 }
 

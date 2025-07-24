@@ -57,14 +57,23 @@ const Index = () => {
         });
         transcriptionResult = await replicateService.transcribeAudio(audioBlob);
       } catch (replicateError) {
-        addLog("Transcription", "Replicate API failed, using Web Speech API fallback...", "warning");
+        console.error("Replicate API transcription failed:", replicateError);
+        const errorMessage = replicateError instanceof Error ? replicateError.message : "Unknown error";
+        addLog("Transcription", `Replicate API failed: ${errorMessage}`, "error");
+        addLog("Transcription", "Falling back to Web Speech API...", "warning");
         
         const webSpeechService = new WebSpeechService();
         if (!webSpeechService.isSupported()) {
+          console.error("Web Speech API not supported - no transcription methods available");
           throw new Error("Neither Replicate API nor Web Speech API are available");
         }
         
-        transcriptionResult = await webSpeechService.transcribeAudioBlob(audioBlob);
+        try {
+          transcriptionResult = await webSpeechService.transcribeAudioBlob(audioBlob);
+        } catch (webSpeechError) {
+          console.error("Web Speech API fallback also failed:", webSpeechError);
+          throw webSpeechError;
+        }
       }
       
       const transcriptionDuration = Date.now() - transcriptionStart;
