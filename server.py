@@ -10,10 +10,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+from flask_cors import CORS
+CORS(app, origins=["http://localhost:8080", "http://localhost:5173"], supports_credentials=True)
 
 # Set your Replicate API token here
-os.environ["REPLICATE_API_TOKEN"] = "your_replicate_api_token_here"  # Replace this!
+os.environ["REPLICATE_API_TOKEN"] = "r8_1IMPNwx80t3o09mSFNgpxVE15CHZnRa3bJQju"  # Replace this!
 
 @app.route("/", methods=["GET"])
 def health_check():
