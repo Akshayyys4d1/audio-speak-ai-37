@@ -50,7 +50,7 @@ export class ReplicateService {
       formData.append('file', audioBlob, 'recording.webm');
       
       // Call local Flask backend instead of Replicate API directly
-      const response = await fetch('http://localhost:5000/transcribe', {
+      const response = await fetch('http://localhost:5100/transcribe', {
         method: 'POST',
         body: formData
       });
