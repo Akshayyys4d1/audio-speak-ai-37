@@ -14,7 +14,7 @@ from flask_cors import CORS
 CORS(app, origins=["http://localhost:8080", "http://localhost:5173"], supports_credentials=True)
 
 # Set your Replicate API token here
-os.environ["REPLICATE_API_TOKEN"] = "r8_1IMPNwx80t3o09mSFNgpxVE15CHZnRa3bJQju"  # Replace this!
+os.environ["REPLICATE_API_TOKEN"] = "r8_1IMPNwx80t3o09mSFNgpxVE15CHZnRa3bJQju"
 
 @app.route("/", methods=["GET"])
 def health_check():
